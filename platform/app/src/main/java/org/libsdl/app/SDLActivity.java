@@ -1805,6 +1805,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (Environment.isExternalStorageManager()) {
                     nativePermissionResult(requestCode, true);
+                } else if (Environment.isExternalStorageLegacy()) {
+                    // Fire TV build targets SDK 29 with requestLegacyExternalStorage: the normal
+                    // storage permission already covers shared storage, and Fire OS has no
+                    // "All files access" screen to send the user to (that crashed here).
+                    nativePermissionResult(requestCode,
+                            activity.checkSelfPermission("android.permission.WRITE_EXTERNAL_STORAGE") == PackageManager.PERMISSION_GRANTED);
                 } else {
                     //request for the permission
                     try {
@@ -1813,9 +1819,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                         intent.setData(Uri.parse(String.format("package:%s",activity.getApplicationContext().getPackageName())));
                         activity.startActivityForResult(intent, 2296);
                     } catch (Exception e) {
-                        Intent intent = new Intent();
-                        intent.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                        activity.startActivityForResult(intent, 2296);
+                        try {
+                            Intent intent = new Intent();
+                            intent.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                            activity.startActivityForResult(intent, 2296);
+                        } catch (Exception noScreen) {
+                            nativePermissionResult(requestCode, false); // no such screen (Fire TV)
+                        }
                     }
                 }
             } else {

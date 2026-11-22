@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include <stdlib.h>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -212,6 +213,60 @@ static inline void update_analog_stick(s8 *stick_x, s8 *stick_y,
 }
 
 extern s16 gMenuMode;
+#ifdef TARGET_ANDROID
+// Fire TV: the remote (a virtual pad, see controller_android_remote.c) and a Bluetooth gamepad are
+// separate devices, and the Fire TV remote can itself show up as joystick 0. Read every other
+// connected game controller too and combine it with the configured one.
+#define MAX_EXTRA_PADS 4
+static SDL_GameController* sExtraPads[MAX_EXTRA_PADS] = { NULL };
+
+static int16_t pick_axis(int16_t a, int16_t b) {
+    return (abs((int)b) > abs((int)a)) ? b : a;
+}
+
+static bool read_extra_pads(int16_t axes[SDL_CONTROLLER_AXIS_MAX], bool buttons[SDL_CONTROLLER_BUTTON_MAX]) {
+    for (int k = 0; k < MAX_EXTRA_PADS; k++) {
+        if (sExtraPads[k] && !SDL_GameControllerGetAttached(sExtraPads[k])) {
+            SDL_GameControllerClose(sExtraPads[k]);
+            sExtraPads[k] = NULL;
+        }
+    }
+    SDL_JoystickID primary = -1;
+    if (sdl_cntrl) { primary = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sdl_cntrl)); }
+    else if (sdl_joystick) { primary = SDL_JoystickInstanceID(sdl_joystick); }
+
+    int count = SDL_NumJoysticks();
+    for (int i = 0; i < count; i++) {
+        if (!SDL_IsGameController(i)) { continue; }
+        SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(i);
+        if (id == primary) { continue; }
+        bool open = false;
+        for (int k = 0; k < MAX_EXTRA_PADS; k++) {
+            if (sExtraPads[k] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(sExtraPads[k])) == id) { open = true; break; }
+        }
+        if (open) { continue; }
+        for (int k = 0; k < MAX_EXTRA_PADS; k++) {
+            if (!sExtraPads[k]) { sExtraPads[k] = SDL_GameControllerOpen(i); break; }
+        }
+    }
+
+    bool any = false;
+    for (int k = 0; k < MAX_EXTRA_PADS; k++) {
+        SDL_GameController* c = sExtraPads[k];
+        if (!c) { continue; }
+        if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(c)) == primary) { continue; }
+        any = true;
+        for (int a = 0; a < SDL_CONTROLLER_AXIS_MAX; a++) {
+            axes[a] = pick_axis(axes[a], SDL_GameControllerGetAxis(c, (SDL_GameControllerAxis)a));
+        }
+        for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++) {
+            buttons[b] = buttons[b] || SDL_GameControllerGetButton(c, (SDL_GameControllerButton)b);
+        }
+    }
+    return any;
+}
+#endif
+
 static void controller_sdl_read(OSContPad *pad) {
     if (!init_ok) { return; }
 
@@ -270,12 +325,19 @@ static void controller_sdl_read(OSContPad *pad) {
             }
         } else {
             sdl_joystick = SDL_JoystickOpen(configGamepadNumber);
+#ifndef TARGET_ANDROID
             if (!sdl_joystick) { return; }
+#endif
         }
     }
 
     int16_t leftx = 0, lefty = 0, rightx = 0, righty = 0;
     int16_t ltrig = 0, rtrig = 0;
+#ifdef TARGET_ANDROID
+    int16_t extraAxes[SDL_CONTROLLER_AXIS_MAX] = { 0 };
+    bool extraButtons[SDL_CONTROLLER_BUTTON_MAX] = { false };
+    const bool haveExtra = read_extra_pads(extraAxes, extraButtons);
+#endif
     if (sdl_cntrl) {
         leftx = SDL_GameControllerGetAxis(sdl_cntrl, SDL_CONTROLLER_AXIS_LEFTX);
         lefty = SDL_GameControllerGetAxis(sdl_cntrl, SDL_CONTROLLER_AXIS_LEFTY);
@@ -284,9 +346,19 @@ static void controller_sdl_read(OSContPad *pad) {
         ltrig = SDL_GameControllerGetAxis(sdl_cntrl, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
         rtrig = SDL_GameControllerGetAxis(sdl_cntrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
         for (u32 i = 0; i < SDL_CONTROLLER_BUTTON_MAX; ++i) {
-            const bool new = SDL_GameControllerGetButton(sdl_cntrl, i);
+            bool new = SDL_GameControllerGetButton(sdl_cntrl, i);
+#ifdef TARGET_ANDROID
+            new = new || extraButtons[i];
+#endif
             update_button(i, new);
         }
+#ifdef TARGET_ANDROID
+    } else if (!sdl_joystick && haveExtra) {
+        // No usable controller at the configured index (e.g. it's the Fire TV remote): use the others.
+        for (u32 i = 0; i < SDL_CONTROLLER_BUTTON_MAX; ++i) {
+            update_button(i, extraButtons[i]);
+        }
+#endif
     } else if (sdl_joystick) {
         int axis_count = SDL_JoystickNumAxes(sdl_joystick);
         if (axis_count >= 2) {
@@ -303,10 +375,32 @@ static void controller_sdl_read(OSContPad *pad) {
         }
 
         int button_count = SDL_JoystickNumButtons(sdl_joystick);
+#ifdef TARGET_ANDROID
+        // Combine with the other pads (game-controller numbering, what the default binds use).
+        // Every index is written each frame so a released remote button can't stay held.
+        int max_buttons = button_count > SDL_CONTROLLER_BUTTON_MAX ? button_count : SDL_CONTROLLER_BUTTON_MAX;
+        for (int i = 0; i < max_buttons && i < MAX_JOYBUTTONS; ++i) {
+            bool down = (i < button_count) && SDL_JoystickGetButton(sdl_joystick, i);
+            if (i < SDL_CONTROLLER_BUTTON_MAX) { down = down || extraButtons[i]; }
+            update_button(i, down);
+        }
+#else
         for (int i = 0; i < button_count && i < MAX_JOYBUTTONS; ++i) {
             update_button(i, SDL_JoystickGetButton(sdl_joystick, i));
         }
+#endif
     }
+
+#ifdef TARGET_ANDROID
+    if (haveExtra) {
+        leftx = pick_axis(leftx, extraAxes[SDL_CONTROLLER_AXIS_LEFTX]);
+        lefty = pick_axis(lefty, extraAxes[SDL_CONTROLLER_AXIS_LEFTY]);
+        rightx = pick_axis(rightx, extraAxes[SDL_CONTROLLER_AXIS_RIGHTX]);
+        righty = pick_axis(righty, extraAxes[SDL_CONTROLLER_AXIS_RIGHTY]);
+        ltrig = pick_axis(ltrig, extraAxes[SDL_CONTROLLER_AXIS_TRIGGERLEFT]);
+        rtrig = pick_axis(rtrig, extraAxes[SDL_CONTROLLER_AXIS_TRIGGERRIGHT]);
+    }
+#endif
 
     if (configStick.rotateLeft) {
         s16 tmp = leftx;

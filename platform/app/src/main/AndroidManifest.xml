@@ -40,6 +40,7 @@
         android:required="false" /> -->
 
     <!-- Allow downloading to the external storage -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
@@ -53,6 +54,10 @@
 
     <!-- Allow access to internet -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- GameBanana mod browser in the launcher -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- In-app updater: install newer builds from the project's GitHub releases -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- if you want to capture audio, uncomment this. -->
     <!-- <uses-permission android:name="android.permission.RECORD_AUDIO" /> -->
@@ -80,6 +85,24 @@
         <meta-data android:name="SDL_ENV.SDL_ACCELEROMETER_AS_JOYSTICK" android:value="0"/>
          -->
      
+        <receiver android:name=".Updater$InstallStatusReceiver" android:exported="false" />
+
+        <!-- Pre-game launcher: Play, video presets, GameBanana mods, updates -->
+        <activity android:name="LauncherActivity"
+            android:label="@string/app_name"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|locale|layoutDirection"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The game. Stays exported so front ends can start it directly with the "rom" and
+             "resolution" extras, skipping the launcher. -->
         <activity android:name="sm64coopdxActivity"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"
@@ -90,11 +113,6 @@
             android:exported="true"
             android:screenOrientation="userLandscape"
             >
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-            </intent-filter>
             <!-- Let Android know that we can handle some USB devices and should receive this event -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
