@@ -30,12 +30,15 @@ clone() { # url tag dir
 
 echo "== SDL2 2.28.1"
 clone https://github.com/libsdl-org/SDL release-2.28.1 "$WORK/SDL"
+# NDK r27 marks ALooper_pollAll unavailable; pollOnce is the drop-in replacement (as in SDL 2.30).
+sed -i 's/ALooper_pollAll(/ALooper_pollOnce(/' "$WORK/SDL/src/sensor/android/SDL_androidsensor.c"
 # SDL's own Android.mk, like the upstream prebuilt (hidapi built in, c++_shared).
 "$NDK/ndk-build" -C "$WORK/SDL" -j"$JOBS" \
   NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk \
   APP_ABI=$ABI APP_PLATFORM=android-$API APP_STL=c++_shared \
   NDK_OUT="$WORK/SDL/obj" NDK_LIBS_OUT="$WORK/SDL/libs" SDL2
-install -D "$WORK/SDL/libs/$ABI/libSDL2.so" "$ROOT/lib/sdl2/android/$ABI/libSDL2.so"
+# Building only the SDL2 module leaves it in obj/ (unstripped; Gradle strips it when packaging).
+install -D "$WORK/SDL/obj/local/$ABI/libSDL2.so" "$ROOT/lib/sdl2/android/$ABI/libSDL2.so"
 
 echo "== Lua 5.3.5"
 clone https://github.com/lua/lua v5.3.5 "$WORK/lua"
