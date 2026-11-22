@@ -47,7 +47,7 @@ final class GameBananaApi {
 
     enum Sort {
         NEWEST("Generic_Newest", "Newest"),
-        MOST_DOWNLOADED("Generic_MostDownloaded", "Most downloaded"),
+        MOST_DOWNLOADED("Generic_MostDownloaded", "Downloads"),
         MOST_LIKED("Generic_MostLiked", "Most liked");
 
         final String api, label;
