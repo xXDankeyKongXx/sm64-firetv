@@ -108,3 +108,5 @@ platform/app/.cxx
 platform/app/src/main/assets
 platform/app/build/
 platform/app/debug/
+# 32-bit ARM libraries built by scripts/build-armv7-deps.sh
+lib/*/android/armeabi-v7a/
