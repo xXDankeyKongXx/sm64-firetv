@@ -40,6 +40,11 @@ jobs:
         # data tables, headers). No ROM is needed: the game reads its assets from the ROM at runtime.
         run: make -j$(nproc)
 
+      - name: Convert sound data to the 32-bit layout
+        # The shipped sound banks are assembled for 64-bit; a 32-bit build crashes in
+        # patch_audio_bank without this.
+        run: python3 tools/sound_to_32bit.py build/us_pc/sound
+
       - name: Build 32-bit libraries (SDL2, Lua, libjuice, coopnet)
         run: scripts/build-armv7-deps.sh
 
