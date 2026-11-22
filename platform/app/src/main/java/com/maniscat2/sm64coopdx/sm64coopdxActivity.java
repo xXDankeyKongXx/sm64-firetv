@@ -1,19 +1,16 @@
 package com.maniscat2.sm64coopdx;
 
-import android.app.AlertDialog;
-import android.text.InputType;
-import android.view.KeyEvent;
-import android.view.WindowManager;
-import android.view.inputmethod.InputMethodManager;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-
 import org.libsdl.app.SDLActivity;
-
-import java.util.Objects;
 
 public class sm64coopdxActivity extends SDLActivity
 {
-
+    /**
+     * Fire TV build: there is no 32-bit curl library (the game's own update checker is compiled
+     * out with NO_CURL), so only load SDL2 and the game. libc++_shared is pulled in as a
+     * dependency by the dynamic linker.
+     */
+    @Override
+    protected String[] getLibraries() {
+        return new String[] { "SDL2", "main" };
+    }
 }

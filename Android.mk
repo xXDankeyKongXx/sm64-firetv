@@ -8,6 +8,12 @@ endif
 ifeq ($(TARGET_ARCH_ABI),arm64-v8a)
   VALID_ARCH := 1
 endif
+# Fire TV: every Fire TV runs a 32-bit OS. Its libraries are built from source in CI
+# (scripts/build-armv7-deps.sh); curl isn't, so the built-in update checker is stubbed out.
+ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
+  VALID_ARCH := 1
+endif
+HAVE_CURL := $(if $(wildcard $(LOCAL_PATH)/lib/curl/android/$(TARGET_ARCH_ABI)/libcurl.so),1,0)
 
 ifeq ($(VALID_ARCH),0)
   $(error $(TARGET_ARCH_ABI) is not supported)
@@ -37,11 +43,13 @@ LOCAL_MODULE := sdl2
 LOCAL_SRC_FILES := $(LOCAL_PATH)/lib/sdl2/android/$(TARGET_ARCH_ABI)/libSDL2.so
 include $(PREBUILT_SHARED_LIBRARY)
 
-# Curl
+# Curl (only where a prebuilt exists)
+ifeq ($(HAVE_CURL),1)
 include $(CLEAR_VARS)
 LOCAL_MODULE := curl
 LOCAL_SRC_FILES := $(LOCAL_PATH)/lib/curl/android/$(TARGET_ARCH_ABI)/libcurl.so
 include $(PREBUILT_SHARED_LIBRARY)
+endif
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := main
@@ -101,13 +109,19 @@ GENERATED_C_FILES := $(PC_BUILD_DIR)/assets/mario_anim_data.c $(PC_BUILD_DIR)/as
   $(addprefix $(LOCAL_PATH)/bin/,$(addsuffix _skybox.c,$(notdir $(basename $(wildcard $(LOCAL_PATH)/textures/skyboxes/*.png)))))
 
 LOCAL_SHORT_COMMANDS := true
-LOCAL_SHARED_LIBRARIES := sdl2 curl
+LOCAL_SHARED_LIBRARIES := sdl2
+ifeq ($(HAVE_CURL),1)
+  LOCAL_SHARED_LIBRARIES += curl
+endif
 LOCAL_STATIC_LIBRARIES := lua5.3.5 coopnet libjuice
 LOCAL_LDLIBS := -lEGL -lGLESv3 -llog -lz -pthread -rdynamic -ldl -landroid
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/include $(LOCAL_PATH)/include/android_execinfo $(LOCAL_PATH)/src $(LOCAL_PATH)/sound $(LOCAL_PATH)/lib/lua/include $(LOCAL_PATH)/lib/coopnet/include $(LOCAL_PATH)/lib/sdl2/include $(LOCAL_PATH)/lib/curl/include $(PC_BUILD_DIR) $(PC_BUILD_DIR)/include $(JNI_H_INCLUDE)
 LOCAL_CFLAGS := -DNON_MATCHING -DAVOID_UB -DTARGET_LINUX -DTARGET_ANDROID -DENABLE_OPENGL -DWIDESCREEN -DF3DEX_GBI_2E -D_LANGUAGE_C -DNO_SEGMENTED_MEMORY -D$(VERSION_DEF) -DSTDC_HEADERS -DDYNOS -DCOOP -DCOOPNET -DUSE_GLES -DTEXTURE_FIX -DBETTERCAMERA -DEXT_OPTIONS_MENU -DIMMEDIATELOAD -DRAPI_GL=1 -DWAPI_SDL2=1 -DAAPI_SDL2=1 -DCAPI_SDL2 -DHAVE_SDL2=1 -O3 -w
 ifeq ($(TOUCH_CONTROLS),1)
   LOCAL_CFLAGS += -DTOUCH_CONTROLS
+endif
+ifeq ($(HAVE_CURL),0)
+  LOCAL_CFLAGS += -DNO_CURL
 endif
 LOCAL_SRC_FILES := $(C_FILES) $(CXX_FILES) $(GENERATED_C_FILES) $(ULTRA_C_FILES) $(GODDARD_C_FILES)
 include $(BUILD_SHARED_LIBRARY)

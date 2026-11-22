@@ -11,15 +11,23 @@ def assetNames = ["lang", "mods", "dynos", "palettes"]
 
 android {
     compileSdkVersion 33
+    // Same NDK the CI installs and uses for the 32-bit libraries (scripts/build-armv7-deps.sh).
+    ndkVersion "27.0.12077973"
     defaultConfig {
         if (buildAsApplication) {
-            applicationId "com.maniscat2.sm64coopdx"
+            // Own id so it can sit next to the upstream app; data folder name is unchanged.
+            applicationId "com.xxdankeykongxx.sm64firetv"
         }
         multiDexEnabled false
         minSdkVersion 24
-        targetSdkVersion 33
-        versionCode 42
-        versionName "1.5.1"
+        // 29 + requestLegacyExternalStorage: Fire OS 8 (Android 11) has no "All files access"
+        // screen, so the classic storage permission is the only one that works there.
+        targetSdkVersion 29
+        // CI passes -PbuildNumber; the launcher's updater compares versionCode with the latest release.
+        def buildNumber = project.hasProperty('buildNumber') ? project.property('buildNumber').toInteger() : 0
+        versionCode 1000 + buildNumber
+        versionName "1.5.1-firetv." + buildNumber
+        buildConfigField "String", "UPDATE_REPO", "\"" + (System.getenv("GITHUB_REPOSITORY") ?: "xXDankeyKongXx/sm64-firetv") + "\""
         ndk {
             moduleName = "app"
             ldLibs "log"
@@ -27,13 +35,32 @@ android {
         }
         externalNativeBuild {
             ndkBuild {
-                arguments "-j10"
-                abiFilters 'arm64-v8a', 'x86_64'
+                arguments "-j" + Runtime.runtime.availableProcessors()
+                // Fire TV: 32-bit ARM only
+                abiFilters 'armeabi-v7a'
+            }
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    // Permanent release key (SOH_SIGNING secret, same key as the Ship of Harkinian Fire TV app),
+    // so updates install over the previous version.
+    signingConfigs {
+        release {
+            def ks = System.getenv("SOH_KEYSTORE")
+            if (ks != null && new File(ks).exists()) {
+                storeFile file(ks)
+                storeType "pkcs12"
+                storePassword System.getenv("SOH_KEYSTORE_PASSWORD")
+                keyAlias "soh-firetv"
+                keyPassword System.getenv("SOH_KEYSTORE_PASSWORD")
             }
         }
     }
     buildTypes {
         release {
+            signingConfig System.getenv("SOH_KEYSTORE") != null ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
